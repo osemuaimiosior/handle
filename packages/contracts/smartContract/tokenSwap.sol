@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity = 0.7.6;
+pragma solidity ^0.8.0;
 pragma abicoder v2;
 
-import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
-import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {FeedRegistryInterface} from "@chainlink/contracts/src/v0.8/interfaces/FeedRegistryInterface.sol";
+import {Denominations} from "@chainlink/contracts/src/v0.8/Denominations.sol";
+
+interface IERC20 {
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 value) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
+}
 
 contract tokenSwap {
-    ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    address constant routerAddress = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+    ISwapRouter public immutable swapRouter = ISwapRouter(routerAddress);
 
     mapping(string => address) listOfTokenAddress;
 
@@ -27,39 +36,58 @@ contract tokenSwap {
     uint24 public constant poolFee = 3000;
     // This is an example payment address.
     address public USDTPaymentAccount = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
+    
+    FeedRegistryInterface internal registry;
+    
 
 /// @param amountOut The exact amount of token to receive from the swap, that will be paid to the merchant - This will be the amount of the item we want to pay for.
-/// @param amountInMaximum The amount of token we are willing to spend to receive the specified amount of specified token. - The amount we want to withdraw from our wallet.
 /// @return amountIn The amount of token actually spent in the swap.- The amount that will be required for the buyer to send to the contract to carry out the swap and pay the merchant.
 /// @param _tokenIn The symbol of the token the payer has selected to pay/make the swap with.
 
-function swapExactOutputSingle(uint256 amountOut, string calldata _tokenIn,  uint256 amountInMaximum) external returns (uint256 amountIn) {
-        address _USDTOut = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+function swapExactOutputSingle(uint256 amountOut, string calldata _tokenIn) external returns (uint256 amountIn) {
+        //address _USDTOut = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
         address _in = listOfTokenAddress[_tokenIn];
+        address _registry = 0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf;
+        registry = FeedRegistryInterface(_registry);
+        
+        // base = _in
+        // guote = _USDTOut
+        int amountInMaximum = getPrice(_in, Denominations.ETH); 
 
-        // In production, you should choose the maximum amount to spend based on oracles or other data sources to achieve a better swap.
-        TransferHelper.safeApprove(_in, address(swapRouter), amountInMaximum);
+        IERC20 _intoken = IERC20(_in);
+
+        _intoken.approve(address(swapRouter), uint256(amountInMaximum));
 
         ISwapRouter.ExactOutputSingleParams memory params =
             ISwapRouter.ExactOutputSingleParams({
                 tokenIn: _in,
-                tokenOut: _USDTOut,
+                tokenOut: Denominations.ETH,
                 fee: poolFee,
-                recipient: USDTPaymentAccount,
+                recipient: address(this),
+            /// This deadline can be a timer and once the timer is reach a new price is given.
                 deadline: block.timestamp,
                 amountOut: amountOut,
-                amountInMaximum: amountInMaximum,
+                amountInMaximum: uint256(amountInMaximum),
                 sqrtPriceLimitX96: 0
             });
 
         // Executes the swap returning the amountIn needed to spend to receive the desired amountOut.
         amountIn = swapRouter.exactOutputSingle(params);
+       // _intoken.transfer(USDTPaymentAccount, amountIn);
 
         // For exact output swaps, the amountInMaximum may not have all been spent.
         // If the actual amount spent (amountIn) is less than the specified maximum amount, we must refund the msg.sender and approve the swapRouter to spend 0.
-        if (amountIn < amountInMaximum) {
-            TransferHelper.safeApprove(_in, address(swapRouter), 0);
-            TransferHelper.safeTransfer(_in, msg.sender, amountInMaximum - amountIn);
+        if (amountIn < uint256(amountInMaximum)) {
+            _intoken.approve(address(swapRouter), 0);
+            _intoken.transfer(address(this), uint256(amountInMaximum) - amountIn);
         }
     }
+
+       // Returns the latest price
+    function getPrice(address base, address quote) public view returns (int) {
+        
+        (, int price, , ,) = registry.latestRoundData(base, quote);
+        return price;
+    }
 }
+

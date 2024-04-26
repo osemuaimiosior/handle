@@ -27,6 +27,7 @@
   "description": "![Flowcharts](https://github.com/osemuaimiosior/handle/assets/67153387/caee9573-0cf8-44d3-b2df-060be43d6f12)",
   "main": "index.js",
   "dependencies": {
+    "@chainlink/contracts": "^1.1.0",
     "@uniswap/v3-core": "^1.0.1",
     "@uniswap/v3-periphery": "^1.4.4",
     "abab": "^2.0.6",
