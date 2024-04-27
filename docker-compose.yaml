@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  Node:
+    build: ./Nodejs
+    container_name: Nodejs_container
+    ports: 
+      - '4000:4000'
+    volumes:
+     - ./Nodejs:/app
+     - ./app/node_modules
+  React:
+    build: ./
+    container_name: React_container
+    ports: 
+      - '3000:3000'
+    stdin_open: true
+    tty: true
